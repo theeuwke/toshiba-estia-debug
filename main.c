@@ -23,6 +23,50 @@
 
 #define TYPE 1
 
+enum e_type {
+	ASCII = 0,
+	UINT8,
+	SINT8,
+	UINT16,
+	SING16
+};
+
+
+struct s_decode_info {
+	uint8_t offset;
+	uint8_t length;
+	enum e_type type;
+	char name[16];
+};
+
+union data_packet {
+	uint8_t raw[126];
+	struct {
+		uint8_t padding0[16];
+		int8_t text[32];
+		uint16_t twi;
+		uint16_t ttw;
+		uint16_t two;
+		uint16_t tc;
+		uint16_t tho;
+		uint8_t remainder[70];
+	} type_7;
+} __attribute__((packed));
+
+#define PACKET_TYPE_MAX 7
+#define DECODE_MAX 6
+struct s_decode_info decode_info[PACKET_TYPE_MAX][DECODE_MAX] = 
+{
+	[6] = {
+		{ .offset = 16, .length = 32, .type = ASCII, .name = "model info\0" },
+		{ .offset = 50, .length = 2, .type = UINT16, .name = "twi\0" },
+		{ .offset = 52, .length = 2, .type = UINT16, .name = "ttw\0" },
+		{ .offset = 54, .length = 2, .type = UINT16, .name = "two\0" },
+		{ .offset = 56, .length = 2, .type = UINT16, .name = "tc\0" },
+		{ .offset = 58, .length = 2, .type = UINT16, .name = "tho\0" },
+	}
+};
+
 int read_packet(int sockfd, unsigned char *buff, int len) {
 	int ret, bytes_read = 0;
 
@@ -40,6 +84,30 @@ int read_packet(int sockfd, unsigned char *buff, int len) {
 
 #define PACKET_SIZE 126 /* bytes */
 #define ALIGN 12
+
+void decode_type(unsigned char *buff, uint16_t type) {
+	int i;
+
+	if(type > PACKET_TYPE_MAX)
+		return;
+
+	for (i = 0; i < DECODE_MAX; i++) {
+		if(decode_info[type] != NULL) {
+			printf("%s: ", decode_info[type][i].name);
+			switch(decode_info[type][i].type) {
+				case ASCII:
+					for(int j = 0; j < decode_info[type][i].length; j++) {
+						printf("%c", buff[decode_info[type][i].offset+j]);
+					}
+				break;
+				case UINT16:
+					printf("%u",*(uint16_t*)&buff[decode_info[type][i].offset] );
+				break;
+			}
+			printf("\n");
+		}
+	}	
+}
 
 void decode_packet(unsigned char *buff, int type, int shift, int align, int var, bool collum) {
 	int index = 0;
@@ -62,9 +130,11 @@ void decode_packet(unsigned char *buff, int type, int shift, int align, int var,
 	
 	l_type = be16toh(((unsigned short*)buff)[0]);
 
+
 	if((l_type != (unsigned short) type) && (type != 255))
 		return;
 
+	
 	if((l_type == 0) || (type != 255))
 		system("clear");
 
@@ -230,6 +300,8 @@ void decode_packet(unsigned char *buff, int type, int shift, int align, int var,
 		printf("\n");
 #endif
 	}
+
+	decode_type(&buff[2], l_type);
 }
 
 void func(int sockfd, int type, int shift, int align, int var, bool collum)
